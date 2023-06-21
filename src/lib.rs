@@ -43,9 +43,8 @@ fn calculate_broadcast_address(ip: IpAddr, subnet_mask: IpAddr, port: u16) -> So
     }
 }
 
-pub(crate) fn search_server(port: u16) -> Option<SocketAddr> {
+pub fn search_server(port: u16, timeout: Duration) -> Option<SocketAddr> {
     let local_address = "0.0.0.0:0"; // Adresse locale du client
-    let timeout = Duration::from_secs(1); // Délai d'attente pour les réponses
 
     // Obtient l'adresse IP de la machine locale
     let local_ip = get_local_ip().expect("Impossible d'obtenir l'adresse IP locale");
@@ -63,6 +62,9 @@ pub(crate) fn search_server(port: u16) -> Option<SocketAddr> {
     // Configure le socket pour permettre la diffusion (broadcast)
     client_socket.set_broadcast(true).expect("Impossible de configurer la diffusion (broadcast)");
 
+    // Configure le socket en mode non bloquant
+    client_socket.set_nonblocking(true).expect("Impossible de configurer le socket en mode non bloquant");
+
     // Message à envoyer dans la requête de détection
     let message = "Server Detection Request";
     let buf = message.as_bytes();
@@ -78,19 +80,35 @@ pub(crate) fn search_server(port: u16) -> Option<SocketAddr> {
 
     println!("Recherche de serveurs UDP actifs sur le réseau local...");
 
+    let mut local_server_found = false;
+
     // Boucle d'attente des réponses pendant le délai spécifié
     while Instant::now() - start_time < timeout {
         match client_socket.recv_from(&mut recv_buf) {
             Ok((size, server_addr)) => {
+                if (server_addr.ip() == local_ip) || (server_addr.ip() == Ipv4Addr::new(0, 0, 0, 0)) {
+                    local_server_found = true;
+                    continue;
+                }
+
                 let response = String::from_utf8_lossy(&recv_buf[..size]);
                 println!("Serveur trouvé : {} - Réponse : {}", server_addr, response);
-
-
                 return Some(server_addr);
             }
-            Err(_) => {}
+            Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                // Pas de message reçu, continuer la boucle
+            }
+            Err(err) => {
+                eprintln!("Erreur lors de la réception du message : {}", err);
+                break;
+            }
         }
     }
 
-    return None;
+    if local_server_found {
+        panic!("Un serveur local à été trouvée, mais pas de serveur distant")
+    }
+
+    None
 }
+

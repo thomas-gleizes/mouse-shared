@@ -1,5 +1,5 @@
 [package]
-name = "mouse-shared"
+name = "k-mouse"
 version = "0.1.0"
 edition = "2021"
 
