@@ -33,11 +33,11 @@ fn get_subnet_mask() -> Option<IpAddr> {
     None
 }
 
-fn calculate_broadcast_address(ip: IpAddr, subnet_mask: IpAddr, port: u16) -> SocketAddr {
+fn calculate_broadcast_address(ip: IpAddr, subnet_mask: IpAddr) -> IpAddr {
     match (ip, subnet_mask) {
         (IpAddr::V4(ipv4), IpAddr::V4(mask)) => {
             let broadcast_ip = Ipv4Addr::from(u32::from(ipv4) | !u32::from(mask));
-            SocketAddr::new(IpAddr::V4(broadcast_ip), port)
+            IpAddr::V4(broadcast_ip)
         }
         _ => panic!("Le masque de sous-réseau n'est pas une adresse IP version 4"),
     }
@@ -48,12 +48,15 @@ pub fn search_server(port: u16, timeout: Duration) -> Option<SocketAddr> {
 
     // Obtient l'adresse IP de la machine locale
     let local_ip = get_local_ip().expect("Impossible d'obtenir l'adresse IP locale");
-
     // Obtient le masque de sous-réseau de la machine locale
     let subnet_mask = get_subnet_mask().expect("Impossible d'obtenir le masque de sous-réseau");
 
+    println!("Adresse IP locale : {}", local_ip);
+    println!("Masque de sous-réseau : {}", subnet_mask);
+
     // Calcule l'adresse de diffusion (broadcast) en utilisant le masque de sous-réseau
-    let broadcast_address = calculate_broadcast_address(local_ip, subnet_mask, port);
+    let broadcast_address = calculate_broadcast_address(local_ip, subnet_mask);
+
     println!("Adresse de diffusion (broadcast) : {}", broadcast_address);
 
     // Crée un socket UDP pour le client
@@ -70,7 +73,7 @@ pub fn search_server(port: u16, timeout: Duration) -> Option<SocketAddr> {
     let buf = message.as_bytes();
 
     // Envoie la requête de détection en diffusion (broadcast)
-    client_socket.send_to(buf, broadcast_address).expect("Impossible d'envoyer la requête de détection");
+    client_socket.send_to(buf, SocketAddr::new(broadcast_address, port)).expect("Impossible d'envoyer la requête de détection");
 
     // Tampon de réception
     let mut recv_buf = [0u8; 1024];
